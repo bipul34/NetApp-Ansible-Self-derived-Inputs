@@ -1,0 +1,41 @@
+###############################################################################################
+# Author: Bipul Gogoi , Please contact for any suggestion or contribution bipul.gogoi@gmail.com
+# Git Repo :  https://github.com/bipul34/NetApp-Ansible-Self-derived-Inputs.git
+###############################################################################################
+
+---
+- name: Check uptime of netapp file
+  hosts: localhost
+  gather_facts: false
+  collections:
+    - netapp.ontap
+  vars:
+    hostname: "<<Put your controller Ip/FQDN>>"
+    username: "<<Put your controller user name>>"
+    password: "<<Put your controller password>>"
+  tasks:
+  - name: Collect aggr info
+    na_ontap_info:
+        state: info
+        gather_subset: 
+            - aggregate_info
+            - vserver_info
+        hostname: "{{ hostname }}"
+        username: "{{ username }}"
+        password: "{{ password }}"
+    register: ontap_info
+
+  - set_fact:
+       aggr:  "{{ aggr | default([]) + [{ 'Name' : item, 'perct': ontap_info.ontap_info.aggregate_info[item].aggr_space_attributes.percent_used_capacity}] }}"
+       #aggr: "{{ aggr | default([]) | combine ( {item : ontap_info.ontap_info.aggregate_info[item].aggr_space_attributes.percent_used_capacity}) }}"
+    with_items: 
+        - "{{ ontap_info.ontap_info.vserver_info[vserver].aggr_list.aggr_name }}" 
+    when:
+     - aggr_name is not defined
+     - ontap_info.ontap_info.aggregate_info[item].aggr_raid_attributes.aggregate_type == '{{ type }}'
+     - ontap_info.ontap_info.aggregate_info[item].aggr_space_attributes.percent_used_capacity |int < 80 
+     - ontap_info.ontap_info.aggregate_info[item].aggr_raid_attributes.is_root_aggregate == 'false'
+     - result is not defined or result.rc != 0
+  - set_fact:  
+     aggr="{{ (aggr |sort(attribute='perct'))[0]['Name'] }}"
+

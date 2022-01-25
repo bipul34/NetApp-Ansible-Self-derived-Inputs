@@ -1,0 +1,50 @@
+###############################################################################################
+# Author: Bipul Gogoi , Please contact for any suggestion or contribution bipul.gogoi@gmail.com
+# Git Repo :  https://github.com/bipul34/NetApp-Ansible-Self-derived-Inputs.git
+###############################################################################################
+---
+- import_playbook: select_aggr_cluster.yml
+- name: Create a vserver on suitable aggr
+  hosts: localhost
+  gather_facts: false
+  collections:
+    - netapp.ontap
+  vars:
+    login: &login
+     hostname: "<<Put your controller Ip/FQDN>>"
+     username: "<<Put your controller user name>>"
+     password: "<<Put your controller password>>"
+    type: "hdd"
+    state: present
+    name: "<<Put your svm or vserver name>>"
+    allowed_protocols: nfs,cifs
+  
+  tasks:
+  - name: Create Vserver
+    na_ontap_svm:
+      name: "{{ name }}"
+      state: "{{ state }}"
+      root_volume: "{{ name }}_root"
+      root_volume_aggregate: "{{ aggr }}"
+      aggr_list: "{{ aggr }}"
+      root_volume_security_style: mixed
+      allowed_protocols: "{{ allowed_protocols }}"
+      <<: *login
+    notify:
+     - enabling services
+
+
+  handlers:
+  - name : enabling services  
+    na_ontap_nfs:
+      state: present
+      service_state: stopped
+      vserver: "{{ name }}"
+      nfsv3: disabled
+      nfsv4: disabled
+      nfsv41: enabled
+      tcp: disabled
+      udp: disabled
+      vstorage_state: disabled
+      <<: *login
+    when: allowed_protocols.find("nfs") != -1

@@ -1,0 +1,41 @@
+###############################################################################################
+# Author: Bipul Gogoi , Please contact for any suggestion or contribution bipul.gogoi@gmail.com
+# Git Repo :  https://github.com/bipul34/NetApp-Ansible-Self-derived-Inputs.git
+###############################################################################################
+
+---
+- name: Check uptime of netapp file
+  hosts: localhost
+  gather_facts: false
+  collections:
+    - netapp.ontap
+  vars:
+    hostname: "<<Put your controller Ip/FQDN>>"
+    username: "<<Put your controller user name>>"
+    password: "<<Put your controller password>>"
+    vserver: "<<Put your vserver or SVM name here>>"
+    vlan: "<<put your vlan id>>" 
+    port: []
+  tasks:
+  - name: Display CIFS servers
+    na_ontap_info:
+        state: info
+        gather_subset: 
+               - net_port_info
+               - vserver_info
+               - aggregate_info
+        hostname: "{{ hostname }}"
+        username: "{{ username }}"
+        password: "{{ password }}"
+    register: ontap_info
+  - name: Collect the node of the vserver
+    set_fact:
+      node: "{{ ontap_info.ontap_info.aggregate_info[ontap_info.ontap_info.vserver_info[vserver].root_volume_aggregate].nodes.node_name }}"
+  - name: Collect the ports of that vlan 
+    set_fact:
+     port: "{{ port  }} + ['{{ontap_info.ontap_info.net_port_info[item].port}}']"
+    when: (ontap_info.ontap_info.net_port_info[item].port.find(vlan) != -1) and (ontap_info.ontap_info.net_port_info[item].node.find(node) != -1)
+    loop: "{{ ontap_info.ontap_info.net_port_info|list }}"
+  - name: Select a random port from the list   
+    set_fact:
+     port: "{{ port | random}}"

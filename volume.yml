@@ -1,0 +1,34 @@
+###############################################################################################
+# Author: Bipul Gogoi , Please contact for any suggestion or contribution bipul.gogoi@gmail.com
+# Git Repo :  https://github.com/bipul34/NetApp-Ansible-Self-derived-Inputs.git
+###############################################################################################
+---
+- import_playbook: select_aggr.yml vserver=blrsimnas type=hdd    # variables can be either prompted or using survey in Ansible Tower/AWX
+- name: Create a volume on suitable aggr
+  hosts: localhost
+  gather_facts: false
+  collections:
+    - netapp.ontap
+  vars:
+    login: &login
+     hostname: "<<Put your controller Ip/FQDN>>"
+     username: "<<Put your controller user name>>"
+     password: "<<Put your controller password>>"
+    state: present
+    vserver: << Put your vserver or svm here >>
+    size: 1
+    volname: newvol    # variables can be either prompted or using survey in Ansible Tower/AWX
+ 
+  tasks:
+  - name: Create Volume
+    na_ontap_volume:
+        state: "{{ state }}"
+        name: "{{ volname }}"
+        aggregate_name: "{{ aggr }}"
+        size: "{{ size }}"
+        size_unit: gb
+        space_guarantee: none
+        percent_snapshot_space: 5
+        vserver: "{{ vserver }}"
+        <<: *login
+        
