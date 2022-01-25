@@ -1,17 +1,17 @@
 # NetApp-Ansible-Self-derived-Inputs
 Repository of Ansible Playbooks for NetApp with bare minimum Inputs and maximum self derived values
-#NetApp-Ansible 
+# NetApp-Ansible 
 
-##Ideology: 
+## Ideology: 
  The basic purpose of this project is to create Ansible Playbooks with maximum automation and minimum inputs . As per my view, most of the playbooks available is using direct inputs from users which can be auto derived wherever possible. Hence i just like to implement this idea to create playbooks which use modules to collect data from existing array and then derived the value as per requirement or best. It help us to put best practices and maintaining a standard . Also i tried to use just ansible  not taking help of PowerShell/python sub scripts or direct ONTAP commands  to get the desired results. 
 
-##Requirement
+## Requirement
   Requirement is same with any other NetApp ansible implementation. I am using NetApp Collections . For user input variables , i am not using separate files as they can be either prompted or using survey in Ansible Tower/AWX. I have put comments wherever possible. Please update your inputs in << >> area.
 
-##Request 
+## Request 
    You are free to use this playbooks if you think they are useful (Will be happy if you keep the author line) . Suggestions / Contributions are welcome. Really appreciate sponsorship :)
 
-##Upcoming Tasks 
+## Upcoming Tasks 
 
 Day0 build of cluster (build cluster as per requirement post rack and stack by NetApp ) with very few inputs 
 
