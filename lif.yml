@@ -1,0 +1,48 @@
+###############################################################################################
+# Author: Bipul Gogoi , Please contact for any suggestion or contribution bipul.gogoi@gmail.com
+# Git Repo :  https://github.com/bipul34/NetApp-Ansible-Self-derived-Inputs.git
+###############################################################################################
+---
+- import_playbook: select_lif.yml
+- name: Create Lif on a vserver by using the sutiable port on the owner node of its root aggr
+  hosts: localhost
+  gather_facts: false
+  collections:
+    - netapp.ontap
+  vars:
+     login: &login
+      hostname: "<<Put your controller Ip/FQDN>>"
+      username: "<<Put your controller user name>>"
+      password: "<<Put your controller password>>"
+      vserver: "blrsimnas"
+      https: "true"
+      validate_certs: "false"
+     lif_name: "testlif"
+     address: "<<Put the ipaddress>>"                    # variables can be either prompted or using survey in Ansible Tower/AWX
+     netmask: "<<Put the subnet>>"
+     gateway: "<<Put the gateway>>"
+
+  tasks:
+  - name: Display the parameters that to be used to create the Lif
+    debug:
+     msg: "The Lif will be created on {{ node }} and on port {{ port }}"
+  - name: Create the interface
+    na_ontap_interface:
+     state: present
+     interface_name: "{{ lif_name }}"
+     home_port: "{{ port }}"
+     home_node: "{{ node }}"
+     role: data
+     protocols: cifs,nfs
+     admin_status: up
+     address: "{{ address }}"
+     netmask: "{{ netmask }}"
+     <<: *login
+  - name: create the route
+    na_ontap_net_routes:
+     state: present
+     destination: 0.0.0.0/0 
+     gateway: "{{ gateway }}"
+     metric: 20
+     <<: *login
+
