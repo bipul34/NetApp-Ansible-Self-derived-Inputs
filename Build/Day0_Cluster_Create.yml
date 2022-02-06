@@ -1,0 +1,62 @@
+###############################################################################################
+# Author: Bipul Gogoi , Please contact for any suggestion or contribution bipul.gogoi@gmail.com
+# Git Repo :  https://github.com/bipul34/NetApp-Ansible-Self-derived-Inputs.git
+###############################################################################################
+---
+- hosts: localhost
+  gather_facts: false
+  collections:
+    - netapp.ontap
+  vars:
+    login: &login
+      username: "<<Put your initial admin user name>>"
+      password: "<<Put your initial admin user password>>"
+      https: true
+      validate_certs: false
+    hostname: "<<Put your first node initial ip (Node-mgmt lif)>>"
+    cluster: "<<Put your cluster name>>"
+    cluster_mgmt: "<<Put your cluster mgmt ip>>"
+    subnet: "<<Put your cluster mgmt subnet>>"
+    gateway: "<<Put your cluster mgmt gateway>>"
+    nodes: "<<Put your comma seprated node mgmt ip's>>" 
+
+  name: "Build cluster: {{ cluster }}"
+  tasks:
+  - name: create cluster
+    na_ontap_cluster:
+      state: present
+      cluster_name: "{{ cluster }}"
+      hostname: "{{ hostname }}"
+      <<: *login
+    tags: Create_cluster
+  - name: "Join Node to {{ cluster }}"
+    na_ontap_cluster:
+        state: present
+        cluster_ip_address:  169.254.132.150  ## Ip address of first node CLuster lif (auto created)
+        cluster_name: "{{ cluster }}"
+        hostname: "{{ hostname }}"
+        <<: *login
+    with_items: "{{ nodes.split(',') }}"
+    tags: Join_node
+  - name: Create cluster mgmt lif
+    na_ontap_interface:
+      state: present
+      interface_name: "{{ cluster }}_mgmt"
+      vserver: "{{ cluster }}"
+      address: "{{ cluster_mgmt }}"
+      netmask: 255.255.255.0
+      role: cluster-mgmt
+      home_node: "{{ cluster }}-01"
+      home_port: e0c
+      hostname: "{{ hostname }}"
+      <<: *login
+    tags: create_cluster_mgmt_lif
+  - name: remove auto mgmt lif
+    na_ontap_interface:
+      state: absent
+      interface_name: "{{ cluster }}-01_mgmt_auto"
+      vserver: "{{ cluster }}"
+      hostname: "{{ cluster_mgmt }}"
+      <<: *login
+    tags: remove_auto_lif
+

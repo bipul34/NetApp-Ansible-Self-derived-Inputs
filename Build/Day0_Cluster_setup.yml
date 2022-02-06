@@ -1,0 +1,176 @@
+###############################################################################################
+# Author: Bipul Gogoi , Please contact for any suggestion or contribution bipul.gogoi@gmail.com
+# Git Repo :  https://github.com/bipul34/NetApp-Ansible-Self-derived-Inputs.git
+###############################################################################################
+---
+- hosts: localhost
+  gather_facts: false
+  collections:
+    - netapp.ontap
+  vars:
+    login: &login
+      username: "<<Put your cluster admin username>>"
+      password: "<<Put your cluster admin password>>"
+      https: true
+      validate_certs: false
+      hostname: "<<Put your cluster IP/FQDN>>"
+    site: "<<Put your Datacenter/Site name >>"
+    cluster: "<<Put your cluster name >>"
+  vars_files:
+     - var.yml     ## Replace with your own varriable files , Sammple is in the repo
+     - if_grp1.yml ## Replace with your own varriable files , Sammple is in the repo
+    
+  name: "Configuring cluster: {{ cluster }}"
+  tasks:
+  - name: Setup Licensing 
+    na_ontap_license:
+     state: present
+     serial_number: "{{ serial }}"
+     license_codes: "{{ license }}"
+     <<: *login
+    with_items: "{{ license.split(',') }}"
+    tags: License
+  - name: Set NTP
+    na_ontap_ntp:
+      state: present
+      version: auto
+      server_name: "{{ntp[site].ntpservers}}"
+      <<: *login
+    tags: ntp
+  - name: Set Timezone,Check if we can put variable in the command module
+    na_ontap_command:
+      command: ['cluster', 'date', 'modify', '-timezone', '"{{timezone[site].zone}}"']
+      privilege: admin
+      <<: *login
+    tags: timezone
+  - name: create DNS
+    na_ontap_dns:
+     state: present
+     vserver:  "{{ cluster }}"
+     domains:  "{{dns.domains}} "
+     nameservers: "{{dns[site].dnsservers}}"
+     skip_validation: true
+     <<: *login
+    tags: dns
+  - name: Create SNMP community (ZAPI only)
+    netapp.ontap.na_ontap_snmp:
+     state: present
+     community_name: snmp[site].community
+     access_control: 'ro'
+     <<: *login
+    tags: snmp
+  - name: Create SNMP traphost
+    na_ontap_snmp_traphosts:
+     state: present
+     ip_address: "{{snmp[site].traphost}}"
+     skip_validation: true
+     <<: *login
+    tags: snmp_traphost
+  - name: Data Collection 1
+    na_ontap_info:
+        state: info
+        gather_subset:
+               - cluster_node_info
+               - net_interface_info
+               - net_port_info
+        <<: *login
+    register: new_ontap_info
+    tags: Collect1
+
+  - name: Create a ifgrp as per variable file which basically kind of hardcoded on interface group but will create on all nodes
+    na_ontap_net_ifgrp:
+     state: present
+     distribution_function: "{{ item.1.value.0.distribution_function }}"
+     name: "{{ item.1.key }}"
+     port: "{{ item.1.value.0.port }}"
+     mode: "{{ item.1.value.0.mode }}"
+     node: "{{ item[0] }}"
+     <<: *login
+    with_nested:
+        - "{{ new_ontap_info.ontap_info.cluster_node_info|list }}"
+        - "{{ifgrp|dict2items}}"
+    tags: Create_ifgrp
+  - name: Data Collection 2
+    na_ontap_info:
+        state: info
+        gather_subset:
+               - net_ifgrp_info
+               - net_port_info
+        <<: *login
+    register: new1_ontap_info
+    tags: Collect2
+  - name: create required vlan's per site on all nodes
+    na_ontap_net_vlan:
+      state: present
+      vlanid: "{{ item.2.vlan_id }}"
+      node:   "{{item[0]}}"
+      parent_interface: "{{ new1_ontap_info.ontap_info.net_ifgrp_info[item[1]].ifgrp_name }}"
+      <<: *login
+    with_nested:
+           - "{{ new_ontap_info.ontap_info.cluster_node_info|list }}"
+           - "{{ new1_ontap_info.ontap_info.net_ifgrp_info|list }}"
+           - "{{vlan[site]}}"
+    tags: Create_vlan
+
+  - name: Set flowcontrol of all 10G to none
+    netapp.ontap.na_ontap_net_port:
+     state: present
+     node: "{{ ontap_info.ontap_info.net_port_info[item].node }}"
+     ports: "{{ ontap_info.ontap_info.net_port_info[item].port }}"
+     flowcontrol_admin: none
+     <<: *login
+    when: (new1_ontap_info.ontap_info.net_port_info[item].operational_speed == "1000" ) and (new1_ontap_info.ontap_info.net_port_info[item].link_status == "up" )
+    loop: "{{ new1_ontap_info.ontap_info.net_port_info|list }}"
+    tags: Create_Flowcontrol_none
+
+  - name: Enable autosupport
+    na_ontap_autosupport:
+     state: present
+     node_name: "{{ new_ontap_info.ontap_info.cluster_node_info[item].node_name }}"
+     from_address: "{{ cluster }}a@<<Your domain name>>"
+     support: yes
+     transport: https
+     noteto: "{{ << Your team detail }} "
+     mail_hosts: "{{ mail[site].mailservers }} "
+     <<: *login
+    loop: "{{ new_ontap_info.ontap_info.cluster_node_info|list }}"
+
+  
+
+  - name: create Broadcast domain for each vlan ifgroup and what about the member ports of ifgroup
+    na_ontap_broadcast_domain:
+        state: present
+        name:  bd_{{item.vlan_id}}
+        mtu: 9000
+        <<: *login
+    with_items:
+        - "{{vlan[site]}}"
+    tags: Create_BD
+  - name: Add correct member ports
+    na_ontap_broadcast_domain_ports:
+     state: present
+     broadcast_domain: "bd_{{ item.0.vlan_id }}"
+     ports: "{{new1_ontap_info.ontap_info.net_port_info[item.1].node}}:{{new1_ontap_info.ontap_info.net_port_info[item.1].port}}"
+     <<: *login
+    with_nested:
+        - "{{vlan[site]}}"
+        - "{{ new1_ontap_info.ontap_info.net_port_info|list }}"
+    when: new1_ontap_info.ontap_info.net_port_info[item.1].port.find(item.0.vlan_id|string) != -1
+    tags: Add_member_BD
+
+  - name:  Create aggr on each node after getting aggr name and disk count
+    na_ontap_aggregate:
+       state: present
+       service_state: online
+       name: "{{ item.1.key }}_{{item[0]|replace('-','_')}}"
+       nodes: "{{item[0]}}"
+       disk_count: "{{ item.1.value.0.disk_count }}"
+       disk_type: "{{ item.1.value.0.disk_type }}"
+       #disk_size: "{{ item.1.value.0.disk_size }}"
+       disk_size_with_unit: "{{ item.1.value.0.disk_size_with_unit }}"
+       <<: *login
+    with_nested:
+           - "{{ new_ontap_info.ontap_info.cluster_node_info|list }}"
+           - "{{aggr|dict2items}}"
+    tags: Create_aggr
+

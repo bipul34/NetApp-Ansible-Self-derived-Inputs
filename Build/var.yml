@@ -1,0 +1,21 @@
+serial: 123456
+license: aaaaanhk,bjasjhash
+
+ntp:
+ lenexa:
+    ntpservers: 192.168.100.1
+dns:
+ domains : test.com,test1.com
+ lenexa:
+    dnsservers: 192.168.100.1, 192.168.100.2
+
+mail:
+ site1:
+   mailservers: 192.168.100.5,mail.test.com
+snmp:
+ site1:
+   community: Test
+   traphost: 192.168.100.1, 192.168.100.2
+timezone:
+  site1:
+    zone: Asia/Kolkata

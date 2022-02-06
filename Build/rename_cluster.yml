@@ -1,0 +1,142 @@
+###############################################################################################
+# Author: Bipul Gogoi , Please contact for any suggestion or contribution bipul.gogoi@gmail.com
+# Git Repo :  https://github.com/bipul34/NetApp-Ansible-Self-derived-Inputs.git
+###############################################################################################
+---
+- hosts: localhost
+  gather_facts: false
+  collections:
+    - netapp.ontap
+  name: Rename Cluster along with related changes
+  vars:
+    common: &common
+      https: true
+      validate_certs: false
+      hostname: "{{ hostname }}"
+      username: "{{ username }}"
+      password: "{{ password }}"
+      
+  vars_files:
+     - new_var.yml
+     #- if_grp.yml
+  tasks:
+  - name: Collect info      ## collect netapp informations
+    na_ontap_info:
+        state: info
+        gather_subset:
+                - cluster_identity_info
+                - cluster_node_info
+        <<: *common
+    register: ontap_info
+    tags: Collect_info1
+
+  - name: Print the old cluster name and new derived cluster name
+    local_action: shell echo " Please verify the below o/p before proceeding " > /tmp/output ; echo "Old cluster name is {{ ontap_info.ontap_info.cluster_identity_info[item].cluster_name }} and it will be changed to {{ cluster }}" >> /tmp/output
+    loop: "{{ ontap_info.ontap_info.cluster_identity_info|list }}"
+    tags: Print_old_new_clustername
+
+  - name: Print node names as per new clustername
+    local_action:  shell echo "the node name is {{ ontap_info.ontap_info.cluster_node_info[item].node_name  }} and it will be changed to {{ cluster }}-0{{ ansible_loop.index }}" >> /tmp/output
+    loop: "{{ ontap_info.ontap_info.cluster_node_info|list }}"
+    loop_control:
+     extended: yes
+    tags: Print_old_new_node
+## Ask for confirmation
+
+  - name: "Collect the output file"
+    shell: cat /tmp/output
+    register: output
+    tags: Collect_output
+  - name: " Print the verification file "
+    debug:
+      msg: "{{output.stdout_lines}}"
+    tags: Print_verification
+  - name: " Rename the cluster "
+    na_ontap_command:
+      command: ['cluster', 'identity', 'modify', '-name', '{{ cluster }}']
+      <<: *common
+    tags: Rename_cluster
+  - name: " Rename the nodes "
+    na_ontap_node:
+      from_name: "{{ ontap_info.ontap_info.cluster_node_info[item].node_name  }}"
+      name: "{{ cluster }}-0{{ ansible_loop.index }}"
+      <<: *common
+    loop: "{{ ontap_info.ontap_info.cluster_node_info|list }}"
+    loop_control:
+     extended: yes
+    tags: rename_node
+  - name: Collect new node names and also aggr info to rename the root aggr by the node name
+    na_ontap_info:
+        state: info
+        gather_subset:
+               - cluster_node_info
+               - aggregate_info
+               - net_interface_info
+        <<: *common
+    register: new_ontap_info
+    tags: Collect_info2
+  - name: Reinitialize the output file
+    local_action: shell echo " Please verify the below o/p before proceeding " > /tmp/output
+    tags: Reinitialize_outputfile
+  - name: Rename root aggr as per new node name
+    local_action: shell echo "Old aggr name is {{ new_ontap_info.ontap_info.aggregate_info[item].aggregate_name }} and new aggr name will be {{ new_ontap_info.ontap_info.aggregate_info[item].nodes.node_name }}_rootaggr0" >> /tmp/output
+    when: new_ontap_info.ontap_info.aggregate_info[item].aggr_raid_attributes.has_local_root == "true"
+    loop: "{{ new_ontap_info.ontap_info.aggregate_info|list }}"
+    tags: Rename_aggr
+
+  - name: "Rename the cluster and node mgmt lif's as per new node name"
+    local_action: shell echo "the lif {{ item }} will be renamed as {{ new_ontap_info.ontap_info.net_interface_info[item].current_node }}_{{ item.split('_')[1]}} " >> /tmp/output
+    when: (new_ontap_info.ontap_info.net_interface_info[item].role == "node_mgmt" ) or (new_ontap_info.ontap_info.net_interface_info[item].role == "cluster" )
+    loop: "{{ new_ontap_info.ontap_info.net_interface_info|list }}"
+    loop_control:
+     extended: yes
+    tags: Rename_mgmt_lifs
+
+  - name: "rename cluster mgmt lif"
+    local_action: shell echo "the lif {{ item }} will be renamed as {{ cluster }}_mgmt }}" >> /tmp/output
+    when: (new_ontap_info.ontap_info.net_interface_info[item].role == "cluster_mgmt" )
+    loop: "{{ new_ontap_info.ontap_info.net_interface_info|list }}"
+    tags: Rename_cluster_mgmt_display
+  - name: "Collect the output file"
+    shell: cat /tmp/output
+    register: output
+    tags: Collect_outputfile
+  - name: " Print the verification file "
+    debug:
+      msg: "{{output.stdout_lines}}"
+    tags: Print_final
+  - name: "Rename the  root aggr's"
+    na_ontap_aggregate:
+     state: present
+     service_state: online
+     from_name: "{{ new_ontap_info.ontap_info.aggregate_info[item].aggregate_name }}"
+     name: "{{ new_ontap_info.ontap_info.aggregate_info[item].nodes.node_name | replace('-','_')}}_rootaggr0"
+     <<: *common
+    when: new_ontap_info.ontap_info.aggregate_info[item].aggr_raid_attributes.has_local_root == "true"
+    loop: "{{ new_ontap_info.ontap_info.aggregate_info|list }}"
+    tags: Rename_aggr
+  - name: "Rename the node mgmt lif's as per new node name"
+    na_ontap_interface:
+     state: present
+     from_name: "{{ item }}"
+     interface_name: "{{ item.split('_')[1] }}"
+     vserver: "{{ new_ontap_info.ontap_info.net_interface_info[item].vserver }}"
+     <<: *common
+    when: (new_ontap_info.ontap_info.net_interface_info[item].role == "node_mgmt" ) 
+    loop: "{{ new_ontap_info.ontap_info.net_interface_info|list }}"
+    loop_control:
+      extended: yes
+    tags: Rename_nodemgmt
+  
+  - name: "rename cluster mgmt lif"
+    na_ontap_interface:
+     state: present
+     from_name: "{{ item }}"
+     interface_name: "{{ cluster }}_mgmt"
+     vserver: "{{ new_ontap_info.ontap_info.net_interface_info[item].vserver }}"
+     <<: *common
+    when: (new_ontap_info.ontap_info.net_interface_info[item].role == "cluster_mgmt" )
+    loop: "{{ new_ontap_info.ontap_info.net_interface_info|list }}"
+    tags: Rename_cluster_mgmt
+
+

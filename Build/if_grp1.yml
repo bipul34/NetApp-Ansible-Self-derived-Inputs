@@ -1,0 +1,20 @@
+ifgrp:
+   a0a:
+   - {distribution_function: ip, port: [e0d, e0e], mode: multimode_lacp}
+   #a0b:
+   #- {distribution_function: ip, port: "[e0f, e0d]", mode: multimode_lacp}
+
+vlan:
+   site1:
+   - vlan_id: 100
+   - vlan_id: 200
+
+aggr:
+  aggr_FCAL:
+  - {disk_count: 5, disk_type: FCAL, disk_size_with_unit: 1020M}
+    
+  #aggr_Hyd:
+  #- {disk_count: 10, disk_type: SAS}
+    
+  #aggr_sata:
+  #- {disk_count: 10, disk_type: SATA}
