@@ -13,8 +13,8 @@ Repository of Ansible Playbooks for NetApp with bare minimum Inputs and maximum 
 
 ## Upcoming Tasks 
 
-Day0 build of cluster (build cluster as per requirement post rack and stack by NetApp ) with very few inputs 
-
+Day0 build of cluster (build cluster as per requirement post rack and stack by NetApp ) with very few inputs  :  Completed , Check Build directory
+Create a Kubernetes pod with persistent storage from netapp via trident CSI 
 
 ## Completed Playbooks 
 
