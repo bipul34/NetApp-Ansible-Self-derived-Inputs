@@ -55,7 +55,7 @@
   - name: Create SNMP community (ZAPI only)
     netapp.ontap.na_ontap_snmp:
      state: present
-     community_name: snmp[site].community
+     community_name: "{{snmp[site].community}}"
      access_control: 'ro'
      <<: *login
     tags: snmp
@@ -146,16 +146,26 @@
     with_items:
         - "{{vlan[site]}}"
     tags: Create_BD
+  - name: Collect vlan port info
+    na_ontap_info:
+        state: info
+        gather_subset:
+               - net_port_info
+        <<: *login
+    register: new2_ontap_info
+    tags: Collect3
+   
+    
   - name: Add correct member ports
     na_ontap_broadcast_domain_ports:
      state: present
      broadcast_domain: "bd_{{ item.0.vlan_id }}"
-     ports: "{{new1_ontap_info.ontap_info.net_port_info[item.1].node}}:{{new1_ontap_info.ontap_info.net_port_info[item.1].port}}"
+     ports: "{{new2_ontap_info.ontap_info.net_port_info[item.1].node}}:{{new2_ontap_info.ontap_info.net_port_info[item.1].port}}"
      <<: *login
     with_nested:
         - "{{vlan[site]}}"
-        - "{{ new1_ontap_info.ontap_info.net_port_info|list }}"
-    when: new1_ontap_info.ontap_info.net_port_info[item.1].port.find(item.0.vlan_id|string) != -1
+        - "{{ new2_ontap_info.ontap_info.net_port_info|list }}"
+    when: new2_ontap_info.ontap_info.net_port_info[item.1].port.find(item.0.vlan_id|string) != -1
     tags: Add_member_BD
 
   - name:  Create aggr on each node after getting aggr name and disk count
